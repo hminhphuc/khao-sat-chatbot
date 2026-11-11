@@ -122,6 +122,9 @@ input.text { min-height: 0; }
 .qbox { display: flex; gap: 10px; align-items: flex-start; }
 .qbox-n { flex: none; width: 28px; height: 28px; margin-top: 8px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 .85rem var(--f-body); display: grid; place-items: center; }
 .qbox textarea { min-height: 58px; }
+.qbox-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.qcount { font-size: .78rem; color: var(--muted); text-align: right; min-height: 1em; }
+.qcount.warn { color: var(--warn); font-weight: 600; }
 .qbox textarea::placeholder { color: var(--muted); opacity: .75; }
 
 /* buttons */
@@ -170,7 +173,7 @@ input.text { min-height: 0; }
   // Two surveys share this page: "sinhvien" (default) and "canbo" (lecturers and offices).
   // The static build sets window.SURVEY_ID before this script; Apps Script /exec serves the default.
   var SURVEY_ID = window.SURVEY_ID === "canbo" ? "canbo" : "sinhvien";
-  var CONFIG = { MIN_LEN: 8, VERSION: "2026-11-v8", DRAFT_KEY: "fit-ks-cauhoi-v9" + (SURVEY_ID === "canbo" ? "-canbo" : "") };
+  var CONFIG = { MIN_LEN: 8, MAX_LEN: 2000, VERSION: "2026-11-v9", DRAFT_KEY: "fit-ks-cauhoi-v9" + (SURVEY_ID === "canbo" ? "-canbo" : "") };
   // Three ways this page runs:
   //   "gas"     served by Apps Script (/exec): submit through google.script.run
   //   "post"    served from the public static site: POST JSON to the Apps Script doPost endpoint.
@@ -285,10 +288,9 @@ input.text { min-height: 0; }
     sinhvien: { profile: PROFILE_SV, hints: HINTS_SV, boxes: 10,
       intro: "Khoa Công nghệ thông tin đang xây dựng <b>Trợ lý ảo AI (chatbot)</b> để giải đáp các thắc mắc về quy chế đào tạo, học vụ, học phí, " +
         "thủ tục, giấy tờ và các thông tin liên quan đến Nhà trường và Khoa. Để chatbot trả lời đúng nhu cầu thực tế, " +
-        "Khoa trân trọng kính mời Quý Thầy Cô, Anh Chị và các bạn đóng góp những câu hỏi đã từng gặp hoặc đang muốn hỏi.",
-      guide: "Kính mời Quý Thầy Cô, Anh Chị và các bạn chia sẻ câu hỏi đã từng gặp hoặc đang quan tâm, " +
-        "mỗi ô một câu. Không cần điền đủ các ô.",
-      done: "Phiếu khảo sát đã được ghi nhận. Những câu hỏi Quý Thầy Cô, Anh Chị và các bạn đóng góp sẽ giúp Khoa xây dựng " +
+        "Khoa trân trọng mời các bạn đóng góp những câu hỏi đã từng gặp hoặc đang muốn hỏi.",
+      guide: "Mời các bạn viết những câu hỏi đã từng gặp hoặc đang thắc mắc, mỗi ô một câu. Không bắt buộc điền hết các ô.",
+      done: "Phiếu khảo sát đã được ghi nhận. Những câu hỏi các bạn đóng góp sẽ giúp Khoa xây dựng " +
         "Trợ lý ảo AI (chatbot) giải đáp đúng và kịp thời các thắc mắc của người học." },
     // Supervisor 11/11: no profile page, 10 question boxes on one screen, no "expected answer" box.
     canbo: { profile: [], hints: HINTS_CB, boxes: 10,
@@ -297,7 +299,7 @@ input.text { min-height: 0; }
         "khảo thí, văn bằng. Để chatbot trả lời đúng nhu cầu thực tế, Khoa trân trọng kính mời Quý Thầy Cô và Anh Chị đóng góp những câu hỏi " +
         "đã từng gặp hoặc đang cần tra cứu trong công việc.",
       guide: "Kính mời Quý Thầy Cô và Anh Chị chia sẻ câu hỏi về quy chế, quy định đã từng gặp hoặc đang cần tra cứu, " +
-        "mỗi ô một câu. Không cần điền đủ các ô.",
+        "mỗi ô một câu. Không bắt buộc điền hết các ô.",
       done: "Phiếu khảo sát đã được ghi nhận. Những câu hỏi Quý Thầy Cô và Anh Chị đóng góp sẽ giúp Khoa xây dựng " +
         "Trợ lý ảo AI (chatbot) hỗ trợ tra cứu quy chế, quy định đúng và kịp thời." }
   };
@@ -457,11 +459,14 @@ input.text { min-height: 0; }
   function viewBoxes() {
     var hints = state.boxHints && state.boxHints.length ? state.boxHints : shuffledHints();
     return '<section class="sheet">' +
-      '<div class="guide"><span>' + SURVEY.guide + "</span></div>" +
+      '<div class="guide"><span>' + SURVEY.guide + "</span>" +
+      '<span class="small">Mỗi câu dài từ ' + CONFIG.MIN_LEN + " đến " + fmt(CONFIG.MAX_LEN) + " ký tự (khoảng 2 đến 400 chữ).</span></div>" +
       '<div class="qboxes">' + state.boxes.map(function (b, i) {
+        var c = countInfo(b.text);
         return '<div class="qbox"><label class="qbox-n" for="box' + i + '">' + (i + 1) + "</label>" +
-          '<textarea id="box' + i + '" data-box="' + i + '" maxlength="2000" rows="2" placeholder="' +
-          esc("Gợi ý: " + hintText(hints[i % hints.length])) + '">' + esc(b.text) + "</textarea></div>";
+          '<div class="qbox-body"><textarea id="box' + i + '" data-box="' + i + '" maxlength="' + CONFIG.MAX_LEN + '" rows="2" placeholder="' +
+          esc("Gợi ý: " + hintText(hints[i % hints.length])) + '">' + esc(b.text) + "</textarea>" +
+          '<span class="qcount' + (c.warn ? " warn" : "") + '" id="cnt' + i + '">' + c.text + "</span></div></div>";
       }).join("") + "</div>" +
       '<div><button type="button" class="btn link" data-act="more">+ Thêm 5 ô</button></div>' +
       nav(true, "Tiếp tục →") + "</section>";
@@ -533,10 +538,20 @@ input.text { min-height: 0; }
     return (state.boxes || []).filter(function (b) { return b.text.trim(); })
       .map(function (b) { return { text: b.text.trim(), note: "", pasted: !!b.pasted }; });
   }
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "."); }
+  // text under a box: empty when blank, "còn thiếu" when too short, a running count otherwise
+  function countInfo(text) {
+    var n = text.trim().length;
+    if (!n) return { text: "", warn: false };
+    if (n < CONFIG.MIN_LEN) return { text: "Còn thiếu " + (CONFIG.MIN_LEN - n) + " ký tự (tối thiểu " + CONFIG.MIN_LEN + ")", warn: true };
+    if (text.length >= CONFIG.MAX_LEN) return { text: "Đã đủ " + fmt(CONFIG.MAX_LEN) + " ký tự tối đa, phần dài hơn không được nhận", warn: true };
+    return { text: fmt(text.length) + " / " + fmt(CONFIG.MAX_LEN) + " ký tự", warn: false };
+  }
   function boxError() {
     var shortOnes = [];
     (state.boxes || []).forEach(function (b, i) { var t = b.text.trim(); if (t && t.length < CONFIG.MIN_LEN) shortOnes.push(i + 1); });
-    return shortOnes.length ? "Câu ở ô " + shortOnes.join(", ") + " hơi ngắn, vui lòng viết rõ hơn một chút." : "";
+    return shortOnes.length ? "Câu ở ô " + shortOnes.join(", ") + " chưa đủ " + CONFIG.MIN_LEN +
+      " ký tự. Vui lòng viết thêm, hoặc xoá trống ô đó." : "";
   }
 
   // ---------- submit ----------
@@ -605,7 +620,12 @@ input.text { min-height: 0; }
     var el = e.target, c = state.composer;
     if (!app.contains(el)) return;
     showErr("");
-    if (el.dataset.box) { var b = state.boxes[+el.dataset.box]; b.text = el.value; if (!el.value.trim()) b.pasted = false; save(); return; }
+    if (el.dataset.box) {
+      var b = state.boxes[+el.dataset.box]; b.text = el.value; if (!el.value.trim()) b.pasted = false; save();
+      var c = countInfo(el.value), cnt = document.getElementById("cnt" + el.dataset.box);
+      if (cnt) { cnt.textContent = c.text; cnt.classList.toggle("warn", c.warn); }
+      return;
+    }
     if (el.id === "cText") { c.text = el.value; if (!el.value.trim()) c.pasted = false; save(); return; }
     if (el.id === "cNote") { c.note = el.value; save(); return; }
     var name = el.name || el.dataset.bind || "";
