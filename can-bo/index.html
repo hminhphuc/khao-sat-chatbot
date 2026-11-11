@@ -118,6 +118,11 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
 /* question screen: one guide box whose hint changes after every "Thêm câu" */
 .guide { background: var(--marker-soft); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; font-size: .94rem; }
 .guide .hint { font-weight: 600; }
+.qboxes { display: flex; flex-direction: column; gap: 12px; }
+.qbox { display: flex; gap: 10px; align-items: flex-start; }
+.qbox-n { flex: none; width: 28px; height: 28px; margin-top: 8px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 .85rem var(--f-body); display: grid; place-items: center; }
+.qbox textarea { min-height: 58px; }
+.qbox textarea::placeholder { color: var(--muted); opacity: .75; }
 
 /* buttons */
 .btn { font: 600 .95rem var(--f-body); border-radius: 10px; padding: 11px 20px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
@@ -149,6 +154,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   .nav .btn { flex: 1; }
   .qnav { flex-direction: column; align-items: stretch; gap: 12px; }
   .qnav .btn { flex: none; }
+  .qbox textarea { min-height: 86px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
@@ -164,7 +170,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   // Two surveys share this page: "sinhvien" (default) and "canbo" (lecturers and offices).
   // The static build sets window.SURVEY_ID before this script; Apps Script /exec serves the default.
   var SURVEY_ID = window.SURVEY_ID === "canbo" ? "canbo" : "sinhvien";
-  var CONFIG = { MIN_LEN: 8, VERSION: "2026-11-v8", DRAFT_KEY: "fit-ks-cauhoi-v8" + (SURVEY_ID === "canbo" ? "-canbo" : "") };
+  var CONFIG = { MIN_LEN: 8, VERSION: "2026-11-v8", DRAFT_KEY: "fit-ks-cauhoi-v8" + (SURVEY_ID === "canbo" ? "-canbo-v9" : "") };
   // Three ways this page runs:
   //   "gas"     served by Apps Script (/exec): submit through google.script.run
   //   "post"    served from the public static site: POST JSON to the Apps Script doPost endpoint.
@@ -284,13 +290,14 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
         "Câu hỏi càng cụ thể, chatbot càng được xây dựng sát với nhu cầu thực tế.",
       done: "Phiếu khảo sát đã được ghi nhận. Những câu hỏi Quý Thầy Cô, Anh Chị và các bạn đóng góp sẽ giúp Khoa xây dựng " +
         "Trợ lý ảo AI (chatbot) giải đáp đúng và kịp thời các thắc mắc của người học." },
-    canbo: { profile: PROFILE_CB, hints: HINTS_CB,
+    // Supervisor 11/11: no profile page, 10 question boxes on one screen, no "expected answer" box.
+    canbo: { profile: [], hints: HINTS_CB, boxes: 10,
       intro: "Khoa Công nghệ thông tin đang xây dựng <b>Trợ lý ảo AI (chatbot)</b> hỗ trợ giảng viên và các phòng ban tra cứu quy chế, quy định về " +
         "tuyển sinh, xây dựng chương trình đào tạo, quản lý khoa học công nghệ, tổ chức nhân sự, quản lý sinh viên, học viên, nghiên cứu sinh, " +
         "khảo thí, văn bằng. Để chatbot trả lời đúng nhu cầu thực tế, Khoa trân trọng kính mời Quý Thầy Cô và Anh Chị đóng góp những câu hỏi " +
         "đã từng gặp hoặc đang cần tra cứu trong công việc.",
-      guide: "Kính mời Quý Thầy Cô và Anh Chị chia sẻ câu hỏi về quy chế, quy định đã từng gặp hoặc đang cần tra cứu. " +
-        "Câu hỏi càng cụ thể, chatbot càng được xây dựng sát với nhu cầu thực tế.",
+      guide: "Kính mời Quý Thầy Cô và Anh Chị chia sẻ câu hỏi về quy chế, quy định đã từng gặp hoặc đang cần tra cứu, " +
+        "mỗi ô một câu. Không cần điền đủ các ô.",
       done: "Phiếu khảo sát đã được ghi nhận. Những câu hỏi Quý Thầy Cô và Anh Chị đóng góp sẽ giúp Khoa xây dựng " +
         "Trợ lý ảo AI (chatbot) hỗ trợ tra cứu quy chế, quy định đúng và kịp thời." }
   };
@@ -327,10 +334,17 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   function blankProfile() {
     var p = {}; PROFILE.forEach(function (f) { p[f.id] = f.type === "many" ? [] : ""; }); return p;
   }
+  function blankBoxes(n) { var b = []; for (var i = 0; i < n; i++) b.push({ text: "", pasted: false }); return b; }
+  // every hint line once, in random order; box i shows line i (mod count) as its placeholder
+  function shuffledHints() {
+    var all = []; HINT_TOPICS.forEach(function (t, ti) { t.lines.forEach(function (_, li) { all.push([ti, li]); }); });
+    for (var i = all.length - 1; i > 0; i--) { var j = pick(i + 1), x = all[i]; all[i] = all[j]; all[j] = x; }
+    return all;
+  }
   function blankComposer() { return { text: "", note: "", pasted: false }; }
   function fresh() {
     return { id: uid(), startedAt: new Date().toISOString(), step: 0, consent: false,
-      profile: blankProfile(), questions: [], composer: blankComposer(), hint: randomHint(null),
+      profile: blankProfile(), boxes: blankBoxes(SURVEY.boxes || 0), boxHints: shuffledHints(), questions: [], composer: blankComposer(), hint: randomHint(null),
       closing: { style: [], ready: "", worries: [], feedback: "" }, submitted: false };
   }
   function load() {
@@ -359,11 +373,12 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
     clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 2200);
   }
 
-  // steps: 0 intro, 1 profile, 2 questions, 3 closing
-  var STEP_Q = 2, STEP_END = 3;
+  // steps by name; the profile page is skipped when a survey has no profile questions
+  var STEPS = PROFILE.length ? ["intro", "profile", "questions", "closing"] : ["intro", "questions", "closing"];
+  var STEP_Q = STEPS.indexOf("questions"), STEP_END = STEPS.length - 1;
   function missing(step) {
-    if (step === 1) return PROFILE.filter(function (f) { return !filled(state.profile[f.id]); }).map(function (f) { return "p_" + f.id; });
-    if (step === STEP_Q) return state.questions.length ? [] : ["q"];
+    if (STEPS[step] === "profile") return PROFILE.filter(function (f) { return !filled(state.profile[f.id]); }).map(function (f) { return "p_" + f.id; });
+    if (step === STEP_Q) return (SURVEY.boxes ? boxQuestions().length : state.questions.length) ? [] : ["q"];
     if (step === STEP_END) return CLOSING.filter(function (f) { return f.req && !filled(state.closing[f.id]); }).map(function (f) { return "c_" + f.id; });
     return [];
   }
@@ -408,7 +423,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
 
   // ---------- views ----------
   function viewIntro() {
-    var resumed = state.questions.length || filled(state.profile[PROFILE[0].id]);
+    var resumed = state.questions.length || boxQuestions().length || (PROFILE.length && filled(state.profile[PROFILE[0].id]));
     return previewNote +
       '<section class="sheet">' +
       '<header class="head">' +
@@ -432,7 +447,22 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
       nav(true, "Tiếp tục →") + "</section>";
   }
 
+  // 10-box layout (canbo): all boxes on one screen, each with a different hint as placeholder
+  function viewBoxes() {
+    var hints = state.boxHints && state.boxHints.length ? state.boxHints : shuffledHints();
+    return '<section class="sheet">' +
+      '<div class="guide"><span>' + SURVEY.guide + "</span></div>" +
+      '<div class="qboxes">' + state.boxes.map(function (b, i) {
+        return '<div class="qbox"><label class="qbox-n" for="box' + i + '">' + (i + 1) + "</label>" +
+          '<textarea id="box' + i + '" data-box="' + i + '" maxlength="2000" rows="2" placeholder="' +
+          esc("Gợi ý: " + hintText(hints[i % hints.length])) + '">' + esc(b.text) + "</textarea></div>";
+      }).join("") + "</div>" +
+      '<div><button type="button" class="btn link" data-act="more">+ Thêm 5 ô</button></div>' +
+      nav(true, "Tiếp tục →") + "</section>";
+  }
+
   function viewQuestions() {
+    if (SURVEY.boxes) return viewBoxes();
     var c = state.composer;
     return '<section class="sheet">' +
       '<div class="guide"><span>' + SURVEY.guide + "</span>" +
@@ -469,8 +499,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
       '<span class="names"><span class="uni">Trường Đại học Tôn Đức Thắng</span><span class="fac">Khoa Công nghệ thông tin</span></span></div>';
   }
 
-  var VIEWS = [viewIntro, viewProfile, viewQuestions, viewClosing];
-  function render() { app.innerHTML = state.submitted ? viewDone() : VIEWS[state.step](); }
+  var VIEWS = { intro: viewIntro, profile: viewProfile, questions: viewQuestions, closing: viewClosing };
+  function render() { app.innerHTML = state.submitted ? viewDone() : VIEWS[STEPS[state.step]](); }
   function goStep(i) { state.step = i; save(); render(); window.scrollTo(0, 0); }
   function showErr(msg) { var e = document.getElementById("err"); if (e) e.textContent = msg; }
 
@@ -492,9 +522,20 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
     return true;
   }
 
+  // non-empty boxes, in order (boxes shorter than MIN_LEN are reported by boxError)
+  function boxQuestions() {
+    return (state.boxes || []).filter(function (b) { return b.text.trim(); })
+      .map(function (b) { return { text: b.text.trim(), note: "", pasted: !!b.pasted }; });
+  }
+  function boxError() {
+    var shortOnes = [];
+    (state.boxes || []).forEach(function (b, i) { var t = b.text.trim(); if (t && t.length < CONFIG.MIN_LEN) shortOnes.push(i + 1); });
+    return shortOnes.length ? "Câu ở ô " + shortOnes.join(", ") + " hơi ngắn, vui lòng viết rõ hơn một chút." : "";
+  }
+
   // ---------- submit ----------
   function payload() {
-    var qs = state.questions.map(function (q, i) {
+    var qs = (SURVEY.boxes ? boxQuestions() : state.questions).map(function (q, i) {
       return { n: i + 1, topic: "", topicName: "", text: q.text, note: q.note, pasted: !!q.pasted, real: false };
     });
     return { survey: SURVEY_ID, version: CONFIG.VERSION, id: state.id, consent: state.consent, startedAt: state.startedAt, profile: state.profile,
@@ -540,9 +581,11 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
       }
       return;
     }
+    if (act === "more") { state.boxes = state.boxes.concat(blankBoxes(5)); save(); var y = window.scrollY; render(); window.scrollTo(0, y); return; }
     if (act === "next") {
+      if (state.step === STEP_Q && SURVEY.boxes) { var be = boxError(); if (be) { showErr(be); return; } }
       if (state.step === 0) state.consent = true; // consent is the "Bắt đầu" click after reading the notice
-      if (state.step === STEP_Q && state.composer.text.trim() && !saveComposer()) return; // keep the last unsaved question
+      if (state.step === STEP_Q && !SURVEY.boxes && state.composer.text.trim() && !saveComposer()) return; // keep the last unsaved question
       var m = missing(state.step);
       if (m.length) { showErr(missingMsg(state.step, m)); markMissing(m); return; }
       goStep(state.step + 1); return;
@@ -556,6 +599,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
     var el = e.target, c = state.composer;
     if (!app.contains(el)) return;
     showErr("");
+    if (el.dataset.box) { var b = state.boxes[+el.dataset.box]; b.text = el.value; if (!el.value.trim()) b.pasted = false; save(); return; }
     if (el.id === "cText") { c.text = el.value; if (!el.value.trim()) c.pasted = false; save(); return; }
     if (el.id === "cNote") { c.note = el.value; save(); return; }
     var name = el.name || el.dataset.bind || "";
@@ -571,6 +615,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   // Pasting is allowed but recorded per question, so the organiser can tell typed questions from pasted ones.
   document.addEventListener("paste", function (e) {
     if (e.target && e.target.id === "cText") { state.composer.pasted = true; save(); }
+    if (e.target && e.target.dataset && e.target.dataset.box) { state.boxes[+e.target.dataset.box].pasted = true; save(); }
   });
 
   render();
