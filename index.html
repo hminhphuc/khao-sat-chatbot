@@ -108,11 +108,12 @@ p { margin: 0; }
 .opt input:checked + span { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
 .opt input:checked + span::before { content: "✓ "; color: var(--accent); }
 .opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-textarea {
+textarea, input.text {
   width: 100%; font: inherit; color: var(--ink); background: var(--paper);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; resize: vertical; min-height: 70px;
 }
-textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+textarea:focus, input.text:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+input.text { min-height: 0; }
 
 /* question screen: one guide box whose hint changes after every "Thêm câu" */
 .guide { background: var(--marker-soft); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; font-size: .94rem; }
@@ -169,7 +170,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   // Two surveys share this page: "sinhvien" (default) and "canbo" (lecturers and offices).
   // The static build sets window.SURVEY_ID before this script; Apps Script /exec serves the default.
   var SURVEY_ID = window.SURVEY_ID === "canbo" ? "canbo" : "sinhvien";
-  var CONFIG = { MIN_LEN: 8, VERSION: "2026-11-v8", DRAFT_KEY: "fit-ks-cauhoi-v8" + (SURVEY_ID === "canbo" ? "-canbo-v9" : "") };
+  var CONFIG = { MIN_LEN: 8, VERSION: "2026-11-v8", DRAFT_KEY: "fit-ks-cauhoi-v9" + (SURVEY_ID === "canbo" ? "-canbo" : "") };
   // Three ways this page runs:
   //   "gas"     served by Apps Script (/exec): submit through google.script.run
   //   "post"    served from the public static site: POST JSON to the Apps Script doPost endpoint.
@@ -192,8 +193,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
         "Học viên sau đại học", "Cựu sinh viên", "Giảng viên", "Cán bộ, nhân viên", "Phụ huynh", "Học sinh, thí sinh", "Khác"] },
     { id: "program", label: "Chương trình đào tạo", type: "one",
       options: ["Tiêu chuẩn", "Chất lượng cao", "Đại học bằng tiếng Anh", "Liên kết quốc tế", "Vừa làm vừa học", "Sau đại học", "Không áp dụng"] },
-    { id: "major", label: "Ngành", type: "one",
-      options: ["Khoa học máy tính", "Kỹ thuật phần mềm", "Mạng máy tính và truyền thông dữ liệu", "Ngành khác", "Không áp dụng"] }
+    { id: "major", label: "Khoa / ngành đang học", type: "short", req: false, placeholder: "Ví dụ: Khoa Luật, ngành Luật" }
   ];
 
   // Memory joggers grouped by topic. One is shown at a time and re-drawn after every "Thêm câu":
@@ -228,7 +228,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
     { name: "Kỷ luật, đạo văn, rèn luyện", lines: [
       "Dùng AI, tham khảo bài người khác, làm nhóm: thế nào thì vi phạm quy định?",
       "Điểm rèn luyện được tính như thế nào."] },
-    { name: "Khoa Công nghệ thông tin", lines: [
+    { name: "Khoa, cố vấn học tập", lines: [
       "Cần liên hệ Khoa, cố vấn học tập hay giảng viên mà không biết bắt đầu từ đâu.",
       "Tham gia phòng lab, nghiên cứu khoa học, câu lạc bộ, cuộc thi.",
       "Chọn chuyên ngành hẹp, chọn giảng viên hướng dẫn.",
@@ -281,12 +281,13 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   ];
 
   var SURVEYS = {
-    sinhvien: { profile: PROFILE_SV, hints: HINTS_SV,
+    // Supervisor 11/11: same 10-box question page as canbo, no "expected answer"; profile not tied to one faculty.
+    sinhvien: { profile: PROFILE_SV, hints: HINTS_SV, boxes: 10,
       intro: "Khoa Công nghệ thông tin đang xây dựng <b>Trợ lý ảo AI (chatbot)</b> để giải đáp các thắc mắc về quy chế đào tạo, học vụ, học phí, " +
         "thủ tục, giấy tờ và các thông tin liên quan đến Nhà trường và Khoa. Để chatbot trả lời đúng nhu cầu thực tế, " +
         "Khoa trân trọng kính mời Quý Thầy Cô, Anh Chị và các bạn đóng góp những câu hỏi đã từng gặp hoặc đang muốn hỏi.",
-      guide: "Kính mời Quý Thầy Cô, Anh Chị và các bạn chia sẻ câu hỏi đã từng gặp hoặc đang quan tâm. " +
-        "Câu hỏi càng cụ thể, chatbot càng được xây dựng sát với nhu cầu thực tế.",
+      guide: "Kính mời Quý Thầy Cô, Anh Chị và các bạn chia sẻ câu hỏi đã từng gặp hoặc đang quan tâm, " +
+        "mỗi ô một câu. Không cần điền đủ các ô.",
       done: "Phiếu khảo sát đã được ghi nhận. Những câu hỏi Quý Thầy Cô, Anh Chị và các bạn đóng góp sẽ giúp Khoa xây dựng " +
         "Trợ lý ảo AI (chatbot) giải đáp đúng và kịp thời các thắc mắc của người học." },
     // Supervisor 11/11: no profile page, 10 question boxes on one screen, no "expected answer" box.
@@ -376,7 +377,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   var STEPS = PROFILE.length ? ["intro", "profile", "questions", "closing"] : ["intro", "questions", "closing"];
   var STEP_Q = STEPS.indexOf("questions"), STEP_END = STEPS.length - 1;
   function missing(step) {
-    if (STEPS[step] === "profile") return PROFILE.filter(function (f) { return !filled(state.profile[f.id]); }).map(function (f) { return "p_" + f.id; });
+    if (STEPS[step] === "profile") return PROFILE.filter(function (f) { return f.req !== false && !filled(state.profile[f.id]); }).map(function (f) { return "p_" + f.id; });
     if (step === STEP_Q) return (SURVEY.boxes ? boxQuestions().length : state.questions.length) ? [] : ["q"];
     if (step === STEP_END) return CLOSING.filter(function (f) { return f.req && !filled(state.closing[f.id]); }).map(function (f) { return "c_" + f.id; });
     return [];
@@ -402,6 +403,12 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
   }
   function fieldBlock(prefix, f, store, n) {
     var num = n + ". ";
+    if (f.type === "short") {
+      return '<div class="field" data-field="' + prefix + f.id + '"><label class="label" for="' + prefix + f.id + '">' + num + esc(f.label) +
+        (f.req === false ? ' <span class="muted small">(không bắt buộc)</span>' : "") + "</label>" +
+        '<input type="text" class="text" id="' + prefix + f.id + '" data-bind="' + prefix + f.id + '" maxlength="120" placeholder="' +
+        esc(f.placeholder || "") + '" value="' + esc(store[f.id]) + '"></div>';
+    }
     if (f.type === "text") {
       return '<div class="field" data-field="' + prefix + f.id + '"><label class="label" for="' + prefix + f.id + '">' + num + esc(f.label) +
         ' <span class="muted small">(không bắt buộc)</span></label>' +
